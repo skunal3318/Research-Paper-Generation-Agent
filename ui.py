@@ -2,7 +2,10 @@ import streamlit as st
 from search import search_papers, format_papers
 from generator import generate_paper
 from exporter import save_pdf
-from config import ARXIV_MAX_RESULTS
+
+ARXIV_MAX_RESULTS = 12
+ARXIV_URL         = "https://export.arxiv.org/api/query"
+
 
 def main():
     st.set_page_config(
