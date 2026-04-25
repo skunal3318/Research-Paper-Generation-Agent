@@ -1,6 +1,8 @@
 import re
 import requests
-from config import ARXIV_URL, ARXIV_MAX_RESULTS
+
+ARXIV_MAX_RESULTS = 12
+ARXIV_URL         = "https://export.arxiv.org/api/query"
 
 def search_papers(topic, max_results=ARXIV_MAX_RESULTS):
     print(f"\n Searching papers on: {topic}")
