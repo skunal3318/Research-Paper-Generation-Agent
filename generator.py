@@ -1,7 +1,9 @@
+import os
 from groq import Groq
-from config import GROQ_API_KEY, GROQ_MODEL
 import streamlit as st
 
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+GROQ_MODEL   = "llama-3.3-70b-versatile"
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 client = Groq(api_key=GROQ_API_KEY)
