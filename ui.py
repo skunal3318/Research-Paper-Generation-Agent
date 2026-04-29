@@ -1,4 +1,5 @@
 import streamlit as st
+from exporter import save_pdf, save_markdown, save_ieee_docx
 from search     import search_papers, format_papers
 from generator  import generate_paper
 from exporter   import save_pdf, save_markdown
@@ -130,12 +131,13 @@ def main():
 
         st.divider()
 
+        # ── Downloads ──
         st.markdown("### Download")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
             st.download_button(
-                "Download Markdown",
+                "Markdown",
                 data=content,
                 file_name=f"{topic.replace(' ','_')}_paper.md",
                 mime="text/markdown",
@@ -143,16 +145,30 @@ def main():
             )
 
         with col2:
-            with st.spinner("Building IEEE PDF..."):
+            with st.spinner("Building PDF..."):
                 pdf_path  = save_pdf(topic, content, images=images)
                 pdf_bytes = open(pdf_path, "rb").read()
             st.download_button(
-                "Download IEEE PDF",
+                "PDF",
                 data=pdf_bytes,
-                file_name=f"{topic.replace(' ','_')}_IEEE_paper.pdf",
+                file_name=f"{topic.replace(' ','_')}_paper.pdf",
                 mime="application/pdf",
                 use_container_width=True
             )
+
+        with col3:
+            with st.spinner("Building IEEE DOCX..."):
+                docx_path = save_ieee_docx(topic, content,
+                              authors="Research Agent — SRM Institute")
+            if docx_path:
+                docx_bytes = open(docx_path, "rb").read()
+                st.download_button(
+                    " IEEE Word (.docx)",
+                    data=docx_bytes,
+                    file_name=f"{topic.replace(' ','_')}_IEEE_paper.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
 
 
 if __name__ == "__main__":
