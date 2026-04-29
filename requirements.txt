@@ -4,3 +4,4 @@ groq
 fpdf
 matplotlib
 networkx
+docx
