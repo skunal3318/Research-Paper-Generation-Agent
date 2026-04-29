@@ -3,3 +3,4 @@ requests
 groq
 fpdf
 matplotlib
+networkx
