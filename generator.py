@@ -1,39 +1,50 @@
-import os
 from groq import Groq
-import streamlit as st
-
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-GROQ_MODEL   = "llama-3.3-70b-versatile"
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+from config import GROQ_API_KEY, GROQ_MODEL
 
 client = Groq(api_key=GROQ_API_KEY)
 
 def generate_paper(topic, papers_context):
-    print("\n Generating research paper draft...")
+    print("\nGenerating research paper...")
+
     prompt = f"""
-You are an expert academic researcher. Based on the following related research papers, 
-write a complete research paper on the topic: "{topic}"
+You are an expert academic researcher. Based on the following related research papers,
+write a complete IEEE-style research paper on the topic: "{topic}"
 
 Related Papers:
 {papers_context}
 
-Write the paper with these sections:
-1. Title
-2. Abstract (150-200 words)
-3. Introduction
-4. Literature Review (reference the papers above)
-5. Proposed Methodology
-6. Expected Results / Discussion
-7. Conclusion
-8. References
+Write the paper with EXACTLY these sections and labels:
 
-Use formal academic language. Be thorough and specific.
+## Abstract
+(150-200 words)
+
+## I. Introduction
+(detailed introduction)
+
+## II. Literature Review
+(reference the papers above with author and year)
+
+## III. Proposed Methodology
+(detailed methodology. Include a Python code snippet inside ```python ... ``` blocks 
+showing a relevant algorithm or implementation related to the topic)
+
+## IV. Results and Discussion
+(expected results and analysis)
+
+## V. Conclusion
+(summary and future work)
+
+## VI. References
+(list all referenced papers in IEEE format)
+
+Use formal IEEE academic language. Be thorough and specific.
+Include exactly ONE python code block in the Methodology section.
 """
-    
+
     response = client.chat.completions.create(
-        model=GROQ_MODEL, 
+        model=GROQ_MODEL,
         messages=[
-            {"role": "system", "content": "You are an expert academic researcher who writes detailed research papers."},
+            {"role": "system", "content": "You are an expert IEEE academic researcher."},
             {"role": "user",   "content": prompt}
         ],
         max_tokens=4000,
