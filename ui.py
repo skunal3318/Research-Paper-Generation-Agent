@@ -23,8 +23,6 @@ def main():
             IEEE Research Paper Generation Agent
         </h1>
         <p style='text-align:center; color:#555;'>
-            Searches real arXiv papers · Generates IEEE-style paper · 
-            Auto diagrams & graphs · PDF + Markdown export
         </p>
         <hr>
     """, unsafe_allow_html=True)
@@ -36,7 +34,6 @@ def main():
         show_code  = st.toggle("Show code snippets",  value=True)
         show_figs  = st.toggle("Show diagrams & graphs", value=True)
         st.divider()
-        st.caption("Built with arXiv + Groq LLaMA 3.3")
 
     # ── Main input ──
     topic = st.text_input(" Enter your research topic:",
