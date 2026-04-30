@@ -3,9 +3,8 @@ from exporter import save_pdf, save_markdown, save_ieee_docx
 from search     import search_papers, format_papers
 from generator  import generate_paper
 from exporter   import save_pdf, save_markdown
-from visualizer import (generate_methodology_flowchart,
-                        generate_citation_graph,
-                        generate_year_distribution)
+
+from visualizer import generate_all_visuals
 
 ARXIV_MAX_RESULTS = 12
 ARXIV_URL         = "https://export.arxiv.org/api/query"
@@ -33,9 +32,9 @@ def main():
     # ── Sidebar ──
     with st.sidebar:
         st.header("Settings")
-        num_papers = st.slider("📚 Papers to fetch", 5, 15, ARXIV_MAX_RESULTS)
-        show_code  = st.toggle("🖥️ Show code snippets",  value=True)
-        show_figs  = st.toggle("📊 Show diagrams & graphs", value=True)
+        num_papers = st.slider("Papers to fetch", 5, 15, ARXIV_MAX_RESULTS)
+        show_code  = st.toggle("Show code snippets",  value=True)
+        show_figs  = st.toggle("Show diagrams & graphs", value=True)
         st.divider()
         st.caption("Built with arXiv + Groq LLaMA 3.3")
 
@@ -48,7 +47,6 @@ def main():
             st.warning("Please enter a topic.")
             return
 
-        # ── Search ──
         with st.spinner("Searching arXiv..."):
             papers = search_papers(topic, max_results=num_papers)
 
@@ -61,12 +59,10 @@ def main():
         else:
             st.info("No papers found — using LLM knowledge.")
 
-        images = {}
+        visuals = {}
         if show_figs:
-            with st.spinner(" Generating diagrams..."):
-                images["flowchart"]  = generate_methodology_flowchart(topic)
-                images["graph"]      = generate_citation_graph(papers) if papers else None
-                images["year_chart"] = generate_year_distribution(papers) if papers else None
+            with st.spinner("Generating all figures..."):
+                visuals = generate_all_visuals(topic, papers)
 
         # ── Generate paper ──
         with st.spinner("Writing IEEE paper (~15 seconds)..."):
@@ -84,7 +80,6 @@ def main():
         for line in content.split("\n"):
             stripped = line.strip()
 
-            # Code blocks
             if stripped.startswith("```"):
                 if not in_code:
                     in_code  = True
@@ -92,46 +87,59 @@ def main():
                 else:
                     in_code = False
                     if show_code:
-                        lang = "python"
-                        st.code("\n".join(code_buf), language=lang)
+                        st.code("\n".join(code_buf), language="python")
                 continue
 
             if in_code:
                 code_buf.append(line)
                 continue
 
-            # Section headings — insert images after relevant sections
+    
             if stripped.startswith("## ") or stripped.startswith("# "):
                 heading = stripped.lstrip("#").strip()
                 st.markdown(f"""
-                    <div style='background:#0a0a3c; color:white; 
-                                padding:6px 12px; border-radius:4px; 
+                    <div style='background:#0a0a3c; color:white;
+                                padding:6px 12px; border-radius:4px;
                                 margin-top:16px; font-weight:bold;'>
                         {heading}
                     </div>
                 """, unsafe_allow_html=True)
 
-                if show_figs and images:
+                if show_figs and visuals:
                     low = heading.lower()
-                    if "method" in low and images.get("flowchart"):
-                        st.image(images["flowchart"],
-                                 caption="Fig. 1: Methodology Flowchart",
+                    if "introduction" in low and visuals.get("architecture"):
+                        st.image(visuals["architecture"],
+                                 caption="Fig. 1: System Architecture",
                                  use_container_width=True)
-                    elif "result" in low and images.get("year_chart"):
-                        st.image(images["year_chart"],
-                                 caption="Fig. 2: Papers by Publication Year",
-                                 use_container_width=True)
-                    elif "literature" in low and images.get("graph"):
-                        st.image(images["graph"],
-                                 caption="Fig. 3: Related Papers Citation Graph",
-                                 use_container_width=True)
+                    elif "methodology" in low or "proposed" in low:
+                        if visuals.get("flowchart"):
+                            st.image(visuals["flowchart"],
+                                     caption="Fig. 2: Methodology Flowchart",
+                                     use_container_width=True)
+                    elif "result" in low or "experiment" in low:
+                        if visuals.get("comparison"):
+                            st.image(visuals["comparison"],
+                                     caption="Fig. 3: Performance Comparison",
+                                     use_container_width=True)
+                        if visuals.get("training"):
+                            st.image(visuals["training"],
+                                     caption="Fig. 4: Training Curves",
+                                     use_container_width=True)
+                    elif "related" in low or "literature" in low:
+                        if visuals.get("graph"):
+                            st.image(visuals["graph"],
+                                     caption="Fig. 5: Citation Network",
+                                     use_container_width=True)
+                        if visuals.get("year_chart"):
+                            st.image(visuals["year_chart"],
+                                     caption="Fig. 6: Papers by Year",
+                                     use_container_width=True)
 
             elif stripped:
                 st.markdown(stripped)
 
         st.divider()
 
-        # ── Downloads ──
         st.markdown("### Download")
         col1, col2, col3 = st.columns(3)
 
@@ -146,7 +154,7 @@ def main():
 
         with col2:
             with st.spinner("Building PDF..."):
-                pdf_path  = save_pdf(topic, content, images=images)
+                pdf_path  = save_pdf(topic, content, images=visuals)
                 pdf_bytes = open(pdf_path, "rb").read()
             st.download_button(
                 "PDF",
@@ -156,10 +164,14 @@ def main():
                 use_container_width=True
             )
 
+        
         with col3:
             with st.spinner("Building IEEE DOCX..."):
-                docx_path = save_ieee_docx(topic, content,
-                              authors="Research Agent — SRM Institute")
+                docx_path = save_ieee_docx(
+                    topic,
+                    content,
+                    authors="Research Agent"
+                )
             if docx_path:
                 docx_bytes = open(docx_path, "rb").read()
                 st.download_button(
