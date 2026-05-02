@@ -20,11 +20,19 @@ def _call(system, user, tokens=4000):
 def generate_paper(topic, papers_context):
     print("\nGenerating paper in sections...")
 
-    SYSTEM = """You are a senior IEEE researcher with 20+ years of experience.
-You write comprehensive, technically rigorous research papers.
-Use formal academic language, cite works properly, include equations where relevant,
-and write with the depth expected in top-tier IEEE journals."""
+    SYSTEM = """You are a senior IEEE researcher writing a 100% original research paper.
 
+CRITICAL RULES TO AVOID PLAGIARISM:
+- NEVER copy or paraphrase sentences from existing papers
+- Always express ideas in completely fresh, unique language
+- When citing a paper, only mention its KEY FINDING in your own words
+- Use unique analogies, examples, and explanations
+- Write as if explaining to someone for the first time
+- Vary sentence structure frequently — avoid repetitive patterns
+- All equations, algorithms, and code must be original formulations
+- Do not reproduce any abstract, introduction, or conclusion from cited works
+
+Your writing style: precise, confident, technically rigorous, and entirely original."""
     # ── 1. Abstract ───────────────────────────────────────
     print("   [1/7] Abstract...")
     abstract = _call(SYSTEM, f"""
