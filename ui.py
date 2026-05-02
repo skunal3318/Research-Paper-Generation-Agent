@@ -168,7 +168,7 @@ def main():
                     topic,
                     content,
                     authors="Kunal Yadav",
-                    image=visuals
+                    images=visuals
                 )
             if docx_path:
                 docx_bytes = open(docx_path, "rb").read()
