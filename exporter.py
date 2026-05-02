@@ -1,4 +1,6 @@
 import re
+import tempfile
+import os
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -7,10 +9,6 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from fpdf import FPDF
 
-
-# ═══════════════════════════════════════════════════════════
-#  HELPERS
-# ═══════════════════════════════════════════════════════════
 
 def _clean(text):
     """Strip markdown symbols."""
@@ -60,7 +58,7 @@ def _set_two_columns(section):
         sectPr.remove(existing)
     cols = OxmlElement('w:cols')
     cols.set(qn('w:num'),        '2')
-    cols.set(qn('w:space'),      '720')   # 0.5 inch gap
+    cols.set(qn('w:space'),      '720')
     cols.set(qn('w:equalWidth'), '1')
     sectPr.append(cols)
 
@@ -80,26 +78,13 @@ def _add_page_number(footer_paragraph):
     run._r.append(fldChar2)
 
 
-# ═══════════════════════════════════════════════════════════
-#  IEEE DOCX EXPORT  — pure Python, no Node.js
-# ═══════════════════════════════════════════════════════════
-
 ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X']
 
 
 def save_ieee_docx(topic, content, authors="Research Agent"):
-    """
-    Generate an IEEE-formatted .docx:
-      - Single-column title + abstract
-      - Two-column body
-      - Times New Roman throughout
-      - Roman-numeral section headings
-      - Code blocks in Courier New
-    """
     filename = topic.replace(" ", "_") + "_IEEE_paper.docx"
     doc      = Document()
 
-    # ── Page geometry (8.5 × 11 in, 0.65 in margins) ──────
     sec0 = doc.sections[0]
     sec0.page_width    = Inches(8.5)
     sec0.page_height   = Inches(11)
@@ -108,21 +93,18 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
     sec0.top_margin    = Inches(0.75)
     sec0.bottom_margin = Inches(0.75)
 
-    # ── Header ────────────────────────────────────────────
     hp = sec0.header.paragraphs[0]
     hp.text      = "IEEE Open Journal — Auto-Generated Research Paper"
     hp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    hp.runs[0].font.name    = 'Times New Roman'
-    hp.runs[0].font.size    = Pt(8)
-    hp.runs[0].font.italic  = True
+    hp.runs[0].font.name      = 'Times New Roman'
+    hp.runs[0].font.size      = Pt(8)
+    hp.runs[0].font.italic    = True
     hp.runs[0].font.color.rgb = RGBColor(0x77, 0x77, 0x77)
 
-    # ── Footer ────────────────────────────────────────────
     fp = sec0.footer.paragraphs[0]
     fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _add_page_number(fp)
 
-    # ── Title ─────────────────────────────────────────────
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(4)
@@ -131,7 +113,6 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
     r.font.size = Pt(18)
     r.font.bold = True
 
-    # ── Authors ───────────────────────────────────────────
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(6)
@@ -142,7 +123,6 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
 
     _add_rule(doc)
 
-    # ── Abstract heading ──────────────────────────────────
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(4)
@@ -153,7 +133,6 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
     r.font.bold   = True
     r.font.italic = True
 
-    # ── Abstract body ─────────────────────────────────────
     abstract = _extract_abstract(content) or f"This paper presents a study on {topic}."
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -166,7 +145,6 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
 
     _add_rule(doc)
 
-    # ── New section: 2-column body ────────────────────────
     body_sec = doc.add_section(WD_SECTION.CONTINUOUS)
     body_sec.page_width    = Inches(8.5)
     body_sec.page_height   = Inches(11)
@@ -176,16 +154,16 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
     body_sec.bottom_margin = Inches(0.75)
     _set_two_columns(body_sec)
 
-    # ── Render body content ───────────────────────────────
-    sec_idx  = 0
-    in_code  = False
-    code_buf = []
+    sec_idx       = 0
+    in_code       = False
+    code_buf      = []
+    skip_abstract = False 
 
     def _body_text(text):
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        p.paragraph_format.space_after        = Pt(3)
-        p.paragraph_format.first_line_indent  = Inches(0.15)
+        p.paragraph_format.space_after       = Pt(3)
+        p.paragraph_format.first_line_indent = Inches(0.15)
         r = p.add_run(_clean(text))
         r.font.name = 'Times New Roman'
         r.font.size = Pt(10)
@@ -220,8 +198,8 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
             p.paragraph_format.space_after = Pt(0)
             pPr = p._p.get_or_add_pPr()
             shd = OxmlElement('w:shd')
-            shd.set(qn('w:val'),   'clear')
-            shd.set(qn('w:fill'),  'F0F0F0')
+            shd.set(qn('w:val'),  'clear')
+            shd.set(qn('w:fill'), 'F0F0F0')
             pPr.append(shd)
             r = p.add_run(cl.replace('\t', '    '))
             r.font.name = 'Courier New'
@@ -231,7 +209,6 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
     for line in content.split('\n'):
         stripped = line.strip()
 
-        # Code block toggle
         if stripped.startswith('```'):
             if not in_code:
                 in_code  = True
@@ -248,33 +225,34 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
         if not stripped:
             continue
 
-        # Skip abstract (already rendered)
         if re.search(r'^#{1,3}\s*abstract', stripped, re.IGNORECASE):
+            skip_abstract = True
             continue
+
+        if skip_abstract:
+            if re.match(r'^#{1,3}\s', stripped) or re.match(r'^[IVX]+\.\s', stripped):
+                skip_abstract = False 
+            else:
+                continue  
+
         if stripped.lower() in ('see above.', 'see above'):
             continue
 
-        # Section heading
-        if re.match(r'^#{1,3}\s', stripped) or re.match(r'^[IVX]+\.\s', stripped):
+        if re.match(r'^[A-Z]\.\s', stripped):
+            _subsection_head(stripped)
+
+        elif re.match(r'^#{1,3}\s', stripped) or re.match(r'^[IVX]+\.\s', stripped):
             title = re.sub(r'^#{1,3}\s', '', stripped)
             title = re.sub(r'^[IVX]+\.\s', '', title)
             _section_head(title)
-
-        # Subsection (A. B. C.)
-        elif re.match(r'^[A-Z]\.\s', stripped):
-            _subsection_head(stripped)
 
         else:
             _body_text(stripped)
 
     doc.save(filename)
-    print(f"📄 IEEE DOCX saved: {filename}")
+    print(f" IEEE DOCX saved: {filename}")
     return filename
 
-
-# ═══════════════════════════════════════════════════════════
-#  PDF EXPORT  — Unicode-safe
-# ═══════════════════════════════════════════════════════════
 
 class UnicodePDF(FPDF):
     def __init__(self):
@@ -299,7 +277,7 @@ class UnicodePDF(FPDF):
 
 
 def save_pdf(topic, content, images=None):
-    """Save a Unicode-safe PDF version."""
+    """Save a Unicode-safe PDF with figures embedded."""
     filename = topic.replace(" ", "_") + "_paper.pdf"
     pdf = UnicodePDF()
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -312,8 +290,9 @@ def save_pdf(topic, content, images=None):
     pdf.ln(4)
     pdf.set_text_color(0, 0, 0)
 
-    in_code  = False
-    code_buf = []
+    in_code       = False
+    code_buf      = []
+    skip_abstract = False
 
     def flush_code(lines):
         pdf.set_fill_color(240, 240, 240)
@@ -343,7 +322,23 @@ def save_pdf(topic, content, images=None):
             pdf.ln(2)
             continue
 
-        if re.match(r'^#{1,3} ', stripped) or re.match(r'^[IVX]+\.', stripped):
+        if re.search(r'^#{1,3}\s*abstract', stripped, re.IGNORECASE):
+            skip_abstract = True
+            continue
+
+        if skip_abstract:
+            if re.match(r'^#{1,3}\s', stripped) or re.match(r'^[IVX]+\.\s', stripped):
+                skip_abstract = False
+            else:
+                continue
+
+        if re.match(r'^[A-Z]\.\s', stripped):
+            pdf.set_font("DejaVu", "B", 10)
+            pdf.set_text_color(30, 30, 30)
+            pdf.multi_cell(0, 6, _clean(stripped))
+            pdf.ln(1)
+
+        elif re.match(r'^#{1,3} ', stripped) or re.match(r'^[IVX]+\.', stripped):
             heading = re.sub(r'^#{1,3} ', '', stripped).replace('**', '').strip()
             pdf.set_font("DejaVu", "B", 12)
             pdf.set_text_color(10, 10, 60)
@@ -354,12 +349,20 @@ def save_pdf(topic, content, images=None):
 
             if images:
                 low = heading.lower()
-                if "method" in low and images.get("flowchart"):
-                    _insert_pdf_image(pdf, images["flowchart"], "Fig. 1: Methodology Flowchart")
-                elif "result" in low and images.get("year_chart"):
-                    _insert_pdf_image(pdf, images["year_chart"], "Fig. 2: Papers by Year")
-                elif "literature" in low and images.get("graph"):
-                    _insert_pdf_image(pdf, images["graph"], "Fig. 3: Citation Graph")
+                if "introduction" in low and images.get("architecture"):
+                    _insert_pdf_image(pdf, images["architecture"], "Fig. 1: System Architecture")
+                elif ("method" in low or "proposed" in low) and images.get("flowchart"):
+                    _insert_pdf_image(pdf, images["flowchart"], "Fig. 2: Methodology Flowchart")
+                elif "result" in low or "experiment" in low:
+                    if images.get("comparison"):
+                        _insert_pdf_image(pdf, images["comparison"], "Fig. 3: Performance Comparison")
+                    if images.get("training"):
+                        _insert_pdf_image(pdf, images["training"], "Fig. 4: Training Curves")
+                elif "related" in low or "literature" in low:
+                    if images.get("graph"):
+                        _insert_pdf_image(pdf, images["graph"], "Fig. 5: Citation Network")
+                    if images.get("year_chart"):
+                        _insert_pdf_image(pdf, images["year_chart"], "Fig. 6: Papers by Year")
 
         elif "**" in stripped:
             clean2 = re.sub(r'\*\*(.*?)\*\*', r'\1', stripped)
@@ -372,30 +375,28 @@ def save_pdf(topic, content, images=None):
             pdf.multi_cell(0, 6, re.sub(r'[*_`#]', '', stripped))
 
     pdf.output(filename)
-    print(f"📄 PDF saved: {filename}")
+    print(f"PDF saved: {filename}")
     return filename
 
 
 def _insert_pdf_image(pdf, buf, caption):
+    """FIX 4: Proper temp file that persists during PDF build."""
     try:
         from PIL import Image
         buf.seek(0)
-        img = Image.open(buf)
-        tmp = f"_tmp_{caption[:8].replace(' ','_')}.png"
-        img.save(tmp)
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_path = tmp.name
+            Image.open(buf).save(tmp_path)
         pdf.ln(2)
-        pdf.image(tmp, x=25, w=160)
+        pdf.image(tmp_path, x=20, w=170)
         pdf.set_font("DejaVu", "I", 8)
         pdf.set_text_color(80, 80, 80)
         pdf.cell(0, 6, caption, align="C", ln=True)
         pdf.ln(3)
+        os.unlink(tmp_path)
     except Exception as e:
         print(f"Image insert skipped: {e}")
 
-
-# ═══════════════════════════════════════════════════════════
-#  MARKDOWN EXPORT
-# ═══════════════════════════════════════════════════════════
 
 def save_markdown(topic, content):
     filename = topic.replace(" ", "_") + "_paper.md"
