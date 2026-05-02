@@ -10,16 +10,13 @@ from docx.oxml import OxmlElement
 from fpdf import FPDF
 
 
+
 def _clean(text):
-    """Strip markdown symbols."""
     return re.sub(r'[*_`#]', '', text).strip()
 
 
 def _extract_abstract(content):
-    """Pull abstract text from generated paper."""
-    lines  = content.split('\n')
-    in_abs = False
-    buf    = []
+    lines, in_abs, buf = content.split('\n'), False, []
     for line in lines:
         s = line.strip()
         if re.search(r'abstract', s, re.IGNORECASE) and s.startswith('#'):
@@ -34,15 +31,14 @@ def _extract_abstract(content):
 
 
 def _add_rule(doc):
-    """Add a horizontal divider line."""
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(2)
     p.paragraph_format.space_after  = Pt(2)
     pPr  = p._p.get_or_add_pPr()
     pBdr = OxmlElement('w:pBdr')
     bot  = OxmlElement('w:bottom')
-    bot.set(qn('w:val'),   'single')
-    bot.set(qn('w:sz'),    '6')
+    bot.set(qn('w:val'), 'single')
+    bot.set(qn('w:sz'), '6')
     bot.set(qn('w:space'), '1')
     bot.set(qn('w:color'), '000000')
     pBdr.append(bot)
@@ -51,20 +47,18 @@ def _add_rule(doc):
 
 
 def _set_two_columns(section):
-    """Make a docx section use 2 equal columns."""
     sectPr = section._sectPr
     existing = sectPr.find(qn('w:cols'))
     if existing is not None:
         sectPr.remove(existing)
     cols = OxmlElement('w:cols')
-    cols.set(qn('w:num'),        '2')
-    cols.set(qn('w:space'),      '720')
+    cols.set(qn('w:num'), '2')
+    cols.set(qn('w:space'), '720')
     cols.set(qn('w:equalWidth'), '1')
     sectPr.append(cols)
 
 
 def _add_page_number(footer_paragraph):
-    """Insert PAGE field into a paragraph."""
     run = footer_paragraph.add_run()
     run.font.size = Pt(8)
     fldChar1 = OxmlElement('w:fldChar')
@@ -78,12 +72,52 @@ def _add_page_number(footer_paragraph):
     run._r.append(fldChar2)
 
 
+def _buf_to_tempfile(buf):
+    """Save a BytesIO PNG buffer to a temp file, return path."""
+    buf.seek(0)
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+        tmp.write(buf.read())
+        return tmp.name
+
+
+def _insert_docx_image(doc, buf, caption, width=Inches(5.5)):
+    """Insert a BytesIO image into a docx document with a caption."""
+    try:
+        tmp_path = _buf_to_tempfile(buf)
+        
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run()
+        run.add_picture(tmp_path, width=width)
+        os.unlink(tmp_path)
+    
+        cap = doc.add_paragraph()
+        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cap.paragraph_format.space_after = Pt(6)
+        r = cap.add_run(caption)
+        r.font.name   = 'Times New Roman'
+        r.font.size   = Pt(9)
+        r.font.italic = True
+    except Exception as e:
+        print(f"DOCX image insert skipped ({caption}): {e}")
+
+
+
 ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X']
 
 
-def save_ieee_docx(topic, content, authors="Research Agent"):
+def save_ieee_docx(topic, content, authors="Research Agent", images=None):
+    """
+    Generate IEEE-formatted .docx with:
+    - Single-column title + abstract
+    - Two-column body
+    - Figures embedded after relevant sections
+    - Correct Roman numeral headings (A./B./C. subsections, not Roman)
+    - No abstract duplication
+    """
     filename = topic.replace(" ", "_") + "_IEEE_paper.docx"
     doc      = Document()
+    images   = images or {}
 
     sec0 = doc.sections[0]
     sec0.page_width    = Inches(8.5)
@@ -128,10 +162,8 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
     p.paragraph_format.space_before = Pt(4)
     p.paragraph_format.space_after  = Pt(4)
     r = p.add_run("Abstract")
-    r.font.name   = 'Times New Roman'
-    r.font.size   = Pt(10)
-    r.font.bold   = True
-    r.font.italic = True
+    r.font.name = 'Times New Roman'; r.font.size = Pt(10)
+    r.font.bold = True; r.font.italic = True
 
     abstract = _extract_abstract(content) or f"This paper presents a study on {topic}."
     p = doc.add_paragraph()
@@ -157,7 +189,7 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
     sec_idx       = 0
     in_code       = False
     code_buf      = []
-    skip_abstract = False 
+    skip_abstract = False
 
     def _body_text(text):
         p = doc.add_paragraph()
@@ -180,6 +212,23 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
         r.font.name = 'Times New Roman'
         r.font.size = Pt(10)
         r.font.bold = True
+
+        
+        low = text.lower()
+        if "introduction" in low and images.get("architecture"):
+            _insert_docx_image(doc, images["architecture"], "Fig. 1: System Architecture Diagram")
+        elif ("method" in low or "proposed" in low) and images.get("flowchart"):
+            _insert_docx_image(doc, images["flowchart"], "Fig. 2: Methodology Flowchart")
+        elif "result" in low or "experiment" in low:
+            if images.get("comparison"):
+                _insert_docx_image(doc, images["comparison"], "Fig. 3: Performance Comparison")
+            if images.get("training"):
+                _insert_docx_image(doc, images["training"], "Fig. 4: Training Curves")
+        elif "related" in low or "literature" in low:
+            if images.get("graph"):
+                _insert_docx_image(doc, images["graph"], "Fig. 5: Citation Network")
+            if images.get("year_chart"):
+                _insert_docx_image(doc, images["year_chart"], "Fig. 6: Papers by Year")
 
     def _subsection_head(text):
         p = doc.add_paragraph()
@@ -211,11 +260,9 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
 
         if stripped.startswith('```'):
             if not in_code:
-                in_code  = True
-                code_buf = []
+                in_code = True; code_buf = []
             else:
-                in_code = False
-                _code_block(code_buf)
+                in_code = False; _code_block(code_buf)
             continue
 
         if in_code:
@@ -233,7 +280,7 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
             if re.match(r'^#{1,3}\s', stripped) or re.match(r'^[IVX]+\.\s', stripped):
                 skip_abstract = False 
             else:
-                continue  
+                continue
 
         if stripped.lower() in ('see above.', 'see above'):
             continue
@@ -250,7 +297,7 @@ def save_ieee_docx(topic, content, authors="Research Agent"):
             _body_text(stripped)
 
     doc.save(filename)
-    print(f" IEEE DOCX saved: {filename}")
+    print(f"IEEE DOCX saved: {filename}")
     return filename
 
 
@@ -277,11 +324,11 @@ class UnicodePDF(FPDF):
 
 
 def save_pdf(topic, content, images=None):
-    """Save a Unicode-safe PDF with figures embedded."""
     filename = topic.replace(" ", "_") + "_paper.pdf"
     pdf = UnicodePDF()
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
+    images = images or {}
 
     pdf.set_font("DejaVu", "B", 16)
     pdf.set_fill_color(10, 10, 60)
@@ -290,9 +337,7 @@ def save_pdf(topic, content, images=None):
     pdf.ln(4)
     pdf.set_text_color(0, 0, 0)
 
-    in_code       = False
-    code_buf      = []
-    skip_abstract = False
+    in_code = False; code_buf = []; skip_abstract = False
 
     def flush_code(lines):
         pdf.set_fill_color(240, 240, 240)
@@ -307,11 +352,9 @@ def save_pdf(topic, content, images=None):
 
         if stripped.startswith('```'):
             if not in_code:
-                in_code  = True
-                code_buf = []
+                in_code = True; code_buf = []
             else:
-                in_code = False
-                flush_code(code_buf)
+                in_code = False; flush_code(code_buf)
             continue
 
         if in_code:
@@ -347,22 +390,21 @@ def save_pdf(topic, content, images=None):
             pdf.set_text_color(0, 0, 0)
             pdf.ln(1)
 
-            if images:
-                low = heading.lower()
-                if "introduction" in low and images.get("architecture"):
-                    _insert_pdf_image(pdf, images["architecture"], "Fig. 1: System Architecture")
-                elif ("method" in low or "proposed" in low) and images.get("flowchart"):
-                    _insert_pdf_image(pdf, images["flowchart"], "Fig. 2: Methodology Flowchart")
-                elif "result" in low or "experiment" in low:
-                    if images.get("comparison"):
-                        _insert_pdf_image(pdf, images["comparison"], "Fig. 3: Performance Comparison")
-                    if images.get("training"):
-                        _insert_pdf_image(pdf, images["training"], "Fig. 4: Training Curves")
-                elif "related" in low or "literature" in low:
-                    if images.get("graph"):
-                        _insert_pdf_image(pdf, images["graph"], "Fig. 5: Citation Network")
-                    if images.get("year_chart"):
-                        _insert_pdf_image(pdf, images["year_chart"], "Fig. 6: Papers by Year")
+            low = heading.lower()
+            if "introduction" in low and images.get("architecture"):
+                _insert_pdf_image(pdf, images["architecture"], "Fig. 1: System Architecture")
+            elif ("method" in low or "proposed" in low) and images.get("flowchart"):
+                _insert_pdf_image(pdf, images["flowchart"], "Fig. 2: Methodology Flowchart")
+            elif "result" in low or "experiment" in low:
+                if images.get("comparison"):
+                    _insert_pdf_image(pdf, images["comparison"], "Fig. 3: Performance Comparison")
+                if images.get("training"):
+                    _insert_pdf_image(pdf, images["training"], "Fig. 4: Training Curves")
+            elif "related" in low or "literature" in low:
+                if images.get("graph"):
+                    _insert_pdf_image(pdf, images["graph"], "Fig. 5: Citation Network")
+                if images.get("year_chart"):
+                    _insert_pdf_image(pdf, images["year_chart"], "Fig. 6: Papers by Year")
 
         elif "**" in stripped:
             clean2 = re.sub(r'\*\*(.*?)\*\*', r'\1', stripped)
@@ -380,13 +422,8 @@ def save_pdf(topic, content, images=None):
 
 
 def _insert_pdf_image(pdf, buf, caption):
-    """FIX 4: Proper temp file that persists during PDF build."""
     try:
-        from PIL import Image
-        buf.seek(0)
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-            tmp_path = tmp.name
-            Image.open(buf).save(tmp_path)
+        tmp_path = _buf_to_tempfile(buf)
         pdf.ln(2)
         pdf.image(tmp_path, x=20, w=170)
         pdf.set_font("DejaVu", "I", 8)
@@ -395,7 +432,7 @@ def _insert_pdf_image(pdf, buf, caption):
         pdf.ln(3)
         os.unlink(tmp_path)
     except Exception as e:
-        print(f"Image insert skipped: {e}")
+        print(f"PDF image insert skipped ({caption}): {e}")
 
 
 def save_markdown(topic, content):
