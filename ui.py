@@ -167,7 +167,8 @@ def main():
                 docx_path = save_ieee_docx(
                     topic,
                     content,
-                    authors="Research Agent"
+                    authors="Kunal Yadav",
+                    image=visuals
                 )
             if docx_path:
                 docx_bytes = open(docx_path, "rb").read()
